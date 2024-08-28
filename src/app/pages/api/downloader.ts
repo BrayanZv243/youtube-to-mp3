@@ -7,6 +7,9 @@ import YouTubeSearchAPI from "youtube-search-api";
 import path from "path";
 import fs from "fs";
 
+const MAX_DURATION = 55;
+const SEPARATOR_URL = "*";
+
 // Función para convertir la duración en formato 'hh:mm:ss' o 'mm:ss' a minutos
 function convertDurationToMinutes(duration: string): number {
     const parts = duration.split(":");
@@ -47,8 +50,11 @@ export async function searchVideos(videosName: string[]): Promise<string[]> {
                 const durationInMinutes = convertDurationToMinutes(
                     video.length.simpleText
                 );
-                if (durationInMinutes <= 50) {
-                    urls.push(`https://www.youtube.com/watch?v=${video.id}`);
+                if (durationInMinutes <= MAX_DURATION) {
+                    urls.push(
+                        `https://www.youtube.com/watch?v=${video.id}${SEPARATOR_URL}${video.title}`
+                    );
+
                     found = true;
                     break;
                 }
@@ -93,6 +99,7 @@ export async function downloadVideo(url: string, videoName: string) {
                 .save(outputFile)
                 .on("end", () => {
                     console.log(`Conversion finished for: ${videoName}`);
+
                     resolve();
                 })
                 .on("error", (err: any) => {
@@ -109,6 +116,7 @@ export async function downloadVideo(url: string, videoName: string) {
 // Función para descargar múltiples videos
 export async function downloadVideos(videos: { url: string; name: string }[]) {
     console.log("Downloads has started, please wait...");
+
     for (const video of videos) {
         await downloadVideo(video.url, video.name);
     }

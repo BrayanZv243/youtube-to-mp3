@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import ReactLogo from "../../../public/react-logo";
 import TextArea from "../components/TextArea";
 import PulseLoader from "react-spinners/PulseLoader";
@@ -11,10 +11,9 @@ async function downloadVideo(videosName: string[]) {
     try {
         const urls = await searchVideos(videosName);
         const videos = urls.map((url, index) => ({
-            url,
-            name: videosName[index] || `video_${index + 1}`,
+            url: url.split("*")[0],
+            name: url.split("*")[1] || `video_${index + 1}`,
         }));
-
         await downloadVideos(videos);
         console.log("---------------------------------------");
         console.log("Downloads ended, thanks for using us :D");
@@ -28,7 +27,7 @@ function MusicComponent() {
     const [text, setText] = useState<string>("");
     const [songs, setSongs] = useState<string[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
-    const [exito, setExito] = useState<boolean>(false);
+    const [success, setSuccess] = useState<boolean>(false);
     const [error, setError] = useState<boolean>(false);
 
     const handleTextChange = (newText: string) => {
@@ -45,12 +44,12 @@ function MusicComponent() {
         setLoading(true);
         try {
             await downloadVideo(songs);
-            setExito(true);
+            setSuccess(true);
             setError(false);
         } catch (error) {
             console.error("Failed to download video:", error);
             setError(true);
-            setExito(false);
+            setSuccess(false);
         } finally {
             setLoading(false);
         }
@@ -65,8 +64,16 @@ function MusicComponent() {
             matches.push(match[1].trim());
         }
 
-        setText(matches.join("\n"));
-        setSongs(matches);
+        if (matches.length === 0) {
+            // Esto significa que no hubo coincidencias con el match, haz el paste default
+            const newString = text + query;
+            setText(newString);
+            setSongs(newString.split("\n"));
+        } else {
+            // Hubo coincidencias, modifica el array en base al regex.
+            setText(matches.join("\n") + "\n" + text);
+            setSongs((songs) => [...songs, ...matches]);
+        }
     };
 
     return (
@@ -95,8 +102,12 @@ function MusicComponent() {
                         {loading ? "Downloading..." : "Get Music!"}
                     </button>
                     <div className="mt-2">
-                        <p className={exito && !loading ? "text-gray-500" : ""}>
-                            {exito &&
+                        <p
+                            className={
+                                success && !loading ? "text-gray-500" : ""
+                            }
+                        >
+                            {success &&
                                 !loading &&
                                 "Toda la música fue descargada con éxito"}
                         </p>
