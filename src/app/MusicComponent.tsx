@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import ReactLogo from "../../public/react-logo";
-import TextArea from "./components/TextArea";
+import TextArea from "@/app/components/TextArea";
 import PulseLoader from "react-spinners/PulseLoader";
 import { searchVideos } from "@/pages/api/downloader";
 
