@@ -1,4 +1,4 @@
-import MusicComponent from "./pages/MusicComponent";
+import MusicComponent from "./MusicComponent";
 
 export default function Home() {
     return <MusicComponent />;

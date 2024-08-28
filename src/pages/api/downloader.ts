@@ -6,6 +6,7 @@ import ffmpeg from "fluent-ffmpeg";
 import YouTubeSearchAPI from "youtube-search-api";
 import path from "path";
 import fs from "fs";
+import type { NextApiRequest, NextApiResponse } from "next";
 
 const MAX_DURATION = 55;
 const SEPARATOR_URL = "*";
@@ -99,7 +100,6 @@ export async function downloadVideo(url: string, videoName: string) {
                 .save(outputFile)
                 .on("end", () => {
                     console.log(`Conversion finished for: ${videoName}`);
-
                     resolve();
                 })
                 .on("error", (err: any) => {
@@ -114,10 +114,51 @@ export async function downloadVideo(url: string, videoName: string) {
 }
 
 // Función para descargar múltiples videos
-export async function downloadVideos(videos: { url: string; name: string }[]) {
+export async function downloadVideosServer(
+    videos: { url: string; name: string }[]
+) {
     console.log("Downloads has started, please wait...");
-
     for (const video of videos) {
         await downloadVideo(video.url, video.name);
+    }
+}
+
+export default async function handler(
+    req: NextApiRequest,
+    res: NextApiResponse
+) {
+    const videoUrl = req.query.url as string;
+    if (!videoUrl || !ytdl.validateURL(videoUrl)) {
+        res.status(400).json({ error: "Invalid YouTube URL" });
+        return;
+    }
+
+    try {
+        const info = await ytdl.getInfo(videoUrl);
+        const format = ytdl.chooseFormat(info.formats, {
+            filter: "audioonly", // Filtra solo los formatos de audio
+        });
+
+        let videoTitle = `${info.videoDetails.title}`;
+        videoTitle = videoTitle
+            .replace(/[^\w\sñÑáéíóúüÁÉÍÓÚÜ\-.]/g, " ")
+            .replace(/_+/g, "_")
+            .replace(/ +/g, " ")
+            .trim()
+            .replace(/\s+$/, "");
+
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${videoTitle}.mp3"`
+        );
+        res.setHeader("Content-Type", "audio/mpeg"); // Cambia a audio/mpeg para MP3
+
+        const audioStream = ytdl(videoUrl, { format });
+        audioStream.pipe(res);
+    } catch (error) {
+        const info = await ytdl.getInfo(videoUrl);
+        const videoTitle = info.videoDetails.title;
+        console.error(`Error downloading video ${videoTitle}`, error);
+        res.status(500).json({ error: "Failed to download audio" });
     }
 }
