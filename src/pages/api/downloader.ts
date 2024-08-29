@@ -7,8 +7,6 @@ import YouTubeSearchAPI from "youtube-search-api";
 import path from "path";
 import fs from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
-import axios from "axios";
-import { HttpsProxyAgent } from "https-proxy-agent";
 
 const MAX_DURATION = 55;
 const SEPARATOR_URL = "*";
@@ -180,12 +178,14 @@ export default async function handler(
             .on("error", (err: any) => {
                 console.error("Error during conversion:", err);
                 res.status(500).json({
-                    error: "Failed to download and convert audio",
+                    error: `Failed to download and convert audio ${videoTitle}`,
                 });
             })
             .pipe(res, { end: true }); // Pipe directamente al response del cliente
     } catch (error) {
-        console.error("Error downloading video:", error);
+        const info = await ytdl.getInfo(videoUrl);
+        const videoTitle = `${info.videoDetails.title}`;
+        console.error(`Error downloading video: ${videoTitle}`, error);
         res.status(500).json({ error: "Failed to download audio" });
     }
 }
