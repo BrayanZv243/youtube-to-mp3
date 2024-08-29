@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import ReactLogo from "../../public/react-logo";
 import TextArea from "@/app/components/TextArea";
 import PulseLoader from "react-spinners/PulseLoader";
-import { searchVideos } from "@/pages/api/downloader";
+import { downloadVideosServer, searchVideos } from "@/pages/api/downloader";
 
 function MusicComponent() {
     const [text, setText] = useState<string>("");
@@ -23,6 +23,11 @@ function MusicComponent() {
                 url: url.split("*")[0],
                 name: url.split("*")[1] || `video_${index + 1}`,
             }));
+
+            // Download on server
+            //await downloadVideosServer(videos);
+
+            // Download on client
 
             for (const video of videos) {
                 setStatus(`Downloading ${video.name}...`);

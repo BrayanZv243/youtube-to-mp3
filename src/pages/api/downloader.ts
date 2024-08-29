@@ -7,7 +7,8 @@ import YouTubeSearchAPI from "youtube-search-api";
 import path from "path";
 import fs from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { ProxyAgent } from "undici";
+import axios from "axios";
+import { HttpsProxyAgent } from "https-proxy-agent";
 
 const MAX_DURATION = 55;
 const SEPARATOR_URL = "*";
@@ -128,46 +129,31 @@ export async function downloadVideosServer(
     }
 }
 
+// Función para descargar en cliente.
 export default async function handler(
     req: NextApiRequest,
     res: NextApiResponse
 ) {
     const videoUrl = req.query.url as string;
-    const proxyUrl = "http://us-ca.proxymesh.com:31280";
-    const client = new ProxyAgent(proxyUrl);
-
     if (!videoUrl || !ytdl.validateURL(videoUrl)) {
         res.status(400).json({ error: "Invalid YouTube URL" });
         return;
     }
 
     try {
-        // Cookies de una sesión autenticada
-        const cookies =
-            "SID=g.a000nQhwr0xQzdfOKDrD_GPmeTmUqGP0H57MoA-NKhDINgwx-daNi4DZtmS-fgZiHLCKyk8dgwACgYKAZgSARMSFQHGX2Mi5cFRvk7SqQeRPAK9HgsxCBoVAUF8yKqCz8ojpRTj8ThKPJdktew50076; HSID=A6KonNxAT4Bzy7jle; SSID=Ao8dDXJxqoHe7EnE6; APISID=VqiDNsI7tywyApiG/ANgrHqH2SNxPU7ol6; SAPISID=qaNMKKddC-pLrX85/A68uH7xH4HprCrWip; YSC=--dqS0Ury2s; LOGIN_INFO=AFmmF2swRQIhAJBqdx8WBOH0D-1PCwADzIT6WH8d2Ic35UUMItM-O-bQAiAJajMVWIDjIKCJ4mylCtrw8PU9e0QmmPhpdlj4Ba_GeQ:QUQ3MjNmd1RlOHR6eTFCOFRKc1hpdGNVTC01UTBQRWl3bUx6NWVmWHU2Tktyd0xNdUxHR0tOUzZqNlpqV1AzenNabDY1X2pPSFpTQjZzSFhMQ2lsaEh4OUZUQVpqVFU5Y2VaQkFmM0xLeDlPcHkyWG1IcDRCQ3AyQzNibkhTcEtlOElhUGhwclgtOVFObW1mVlFWcjJnRkxQVmpxUDBEb3BHU3FXRkhabkFZUlpOcTI5Q3pseWR5cW85RVVFNWdwd3hjX0t0U2ZFcDNsZERZWVJCaXZSazh0azh4SFpwNks5QQ==; PREF=tz=America.Hermosillo&f7=100&f5=30000&volume=5&f6=40000000&f4=4000000;';";
-
-        // Obtener la información del video usando las cookies
-        const info = await ytdl.getInfo(videoUrl, {
-            requestOptions: {
-                headers: {
-                    Cookie: cookies,
-                    "User-Agent":
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-                },
-                client,
-            } as any,
-        });
-
+        const info = await ytdl.getInfo(videoUrl);
         const format = ytdl.chooseFormat(info.formats, {
             filter: "audioonly",
+            quality: "highestaudio",
         });
 
-        let videoTitle = info.videoDetails.title;
+        let videoTitle = `${info.videoDetails.title}`;
         videoTitle = videoTitle
             .replace(/[^\w\sñÑáéíóúüÁÉÍÓÚÜ\-.]/g, " ")
             .replace(/_+/g, "_")
             .replace(/ +/g, " ")
-            .trim();
+            .trim()
+            .replace(/\s+$/, "");
 
         res.setHeader(
             "Content-Disposition",
@@ -175,21 +161,31 @@ export default async function handler(
         );
         res.setHeader("Content-Type", "audio/mpeg");
 
-        // Descarga el stream de audio usando el agente proxy y las cookies
+        // Stream de descarga y conversión
         const audioStream = ytdl(videoUrl, {
             format,
             requestOptions: {
                 headers: {
-                    Cookie: cookies,
                     "User-Agent":
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
                 },
-                client,
-            } as any,
+            },
         });
-        audioStream.pipe(res);
+
+        // Configurar ffmpeg para convertir y enviar el stream directamente al cliente
+        ffmpeg(audioStream)
+            .audioCodec("libmp3lame")
+            .audioBitrate(192)
+            .format("mp3")
+            .on("error", (err: any) => {
+                console.error("Error during conversion:", err);
+                res.status(500).json({
+                    error: "Failed to download and convert audio",
+                });
+            })
+            .pipe(res, { end: true }); // Pipe directamente al response del cliente
     } catch (error) {
-        console.error(`Error downloading video ${videoUrl}:`, error);
+        console.error("Error downloading video:", error);
         res.status(500).json({ error: "Failed to download audio" });
     }
 }
