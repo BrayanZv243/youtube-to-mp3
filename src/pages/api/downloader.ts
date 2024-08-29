@@ -7,6 +7,7 @@ import YouTubeSearchAPI from "youtube-search-api";
 import path from "path";
 import fs from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
+import { ProxyAgent } from "undici";
 
 const MAX_DURATION = 55;
 const SEPARATOR_URL = "*";
@@ -47,17 +48,21 @@ export async function searchVideos(videosName: string[]): Promise<string[]> {
             const response = await YouTubeSearchAPI.GetListByKeyword(videoName);
             let found = false;
 
-            for (const video of response.items) {
-                const durationInMinutes = convertDurationToMinutes(
-                    video.length.simpleText
-                );
-                if (durationInMinutes <= MAX_DURATION) {
-                    urls.push(
-                        `https://www.youtube.com/watch?v=${video.id}${SEPARATOR_URL}${video.title}`
-                    );
+            if (response) {
+                for (const video of response.items) {
+                    if (video.length && video.length.simpleText) {
+                        const durationInMinutes = convertDurationToMinutes(
+                            video.length.simpleText
+                        );
+                        if (durationInMinutes <= MAX_DURATION) {
+                            urls.push(
+                                `https://www.youtube.com/watch?v=${video.id}${SEPARATOR_URL}${video.title}`
+                            );
 
-                    found = true;
-                    break;
+                            found = true;
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -73,7 +78,7 @@ export async function searchVideos(videosName: string[]): Promise<string[]> {
     }
 }
 
-// Función para descargar y convertir un video de YouTube a MP3
+// Función para descargar y convertir un video de YouTube a MP3 (En server)
 export async function downloadVideo(url: string, videoName: string) {
     try {
         const outputFile = path.join("downloads", `${videoName}.mp3`);
@@ -128,37 +133,63 @@ export default async function handler(
     res: NextApiResponse
 ) {
     const videoUrl = req.query.url as string;
+    const proxyUrl = "http://us-ca.proxymesh.com:31280";
+    const client = new ProxyAgent(proxyUrl);
+
     if (!videoUrl || !ytdl.validateURL(videoUrl)) {
         res.status(400).json({ error: "Invalid YouTube URL" });
         return;
     }
 
     try {
-        const info = await ytdl.getInfo(videoUrl);
-        const format = ytdl.chooseFormat(info.formats, {
-            filter: "audioonly", // Filtra solo los formatos de audio
+        // Cookies de una sesión autenticada
+        const cookies =
+            "SID=g.a000nQhwr0xQzdfOKDrD_GPmeTmUqGP0H57MoA-NKhDINgwx-daNi4DZtmS-fgZiHLCKyk8dgwACgYKAZgSARMSFQHGX2Mi5cFRvk7SqQeRPAK9HgsxCBoVAUF8yKqCz8ojpRTj8ThKPJdktew50076; HSID=A6KonNxAT4Bzy7jle; SSID=Ao8dDXJxqoHe7EnE6; APISID=VqiDNsI7tywyApiG/ANgrHqH2SNxPU7ol6; SAPISID=qaNMKKddC-pLrX85/A68uH7xH4HprCrWip; YSC=--dqS0Ury2s; LOGIN_INFO=AFmmF2swRQIhAJBqdx8WBOH0D-1PCwADzIT6WH8d2Ic35UUMItM-O-bQAiAJajMVWIDjIKCJ4mylCtrw8PU9e0QmmPhpdlj4Ba_GeQ:QUQ3MjNmd1RlOHR6eTFCOFRKc1hpdGNVTC01UTBQRWl3bUx6NWVmWHU2Tktyd0xNdUxHR0tOUzZqNlpqV1AzenNabDY1X2pPSFpTQjZzSFhMQ2lsaEh4OUZUQVpqVFU5Y2VaQkFmM0xLeDlPcHkyWG1IcDRCQ3AyQzNibkhTcEtlOElhUGhwclgtOVFObW1mVlFWcjJnRkxQVmpxUDBEb3BHU3FXRkhabkFZUlpOcTI5Q3pseWR5cW85RVVFNWdwd3hjX0t0U2ZFcDNsZERZWVJCaXZSazh0azh4SFpwNks5QQ==; PREF=tz=America.Hermosillo&f7=100&f5=30000&volume=5&f6=40000000&f4=4000000;';";
+
+        // Obtener la información del video usando las cookies
+        const info = await ytdl.getInfo(videoUrl, {
+            requestOptions: {
+                headers: {
+                    Cookie: cookies,
+                    "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                },
+                client,
+            } as any,
         });
 
-        let videoTitle = `${info.videoDetails.title}`;
+        const format = ytdl.chooseFormat(info.formats, {
+            filter: "audioonly",
+        });
+
+        let videoTitle = info.videoDetails.title;
         videoTitle = videoTitle
             .replace(/[^\w\sñÑáéíóúüÁÉÍÓÚÜ\-.]/g, " ")
             .replace(/_+/g, "_")
             .replace(/ +/g, " ")
-            .trim()
-            .replace(/\s+$/, "");
+            .trim();
 
         res.setHeader(
             "Content-Disposition",
             `attachment; filename="${videoTitle}.mp3"`
         );
-        res.setHeader("Content-Type", "audio/mpeg"); // Cambia a audio/mpeg para MP3
+        res.setHeader("Content-Type", "audio/mpeg");
 
-        const audioStream = ytdl(videoUrl, { format });
+        // Descarga el stream de audio usando el agente proxy y las cookies
+        const audioStream = ytdl(videoUrl, {
+            format,
+            requestOptions: {
+                headers: {
+                    Cookie: cookies,
+                    "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                },
+                client,
+            } as any,
+        });
         audioStream.pipe(res);
     } catch (error) {
-        const info = await ytdl.getInfo(videoUrl);
-        const videoTitle = info.videoDetails.title;
-        console.error(`Error downloading video ${videoTitle}`, error);
+        console.error(`Error downloading video ${videoUrl}:`, error);
         res.status(500).json({ error: "Failed to download audio" });
     }
 }

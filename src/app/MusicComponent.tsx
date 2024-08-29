@@ -97,12 +97,16 @@ function MusicComponent() {
     };
 
     const formatPaste = (query: string): void => {
-        const regex = /\]\s+[^:]+:\s+(.+)/g;
+        // Ajustar el regex para capturar el texto después del marcador de tiempo y el nombre
+        const regex = /\]\s+[^:]+:\s+([\s\S]*?)(?=\n\s*\[|$)/g;
+
         const matches: string[] = [];
         let match;
 
         while ((match = regex.exec(query)) !== null) {
-            matches.push(match[1].trim());
+            // Eliminar los saltos de línea dentro del texto capturado
+            const formattedText = match[1].replace(/\n+/g, " ").trim();
+            matches.push(formattedText);
         }
 
         if (matches.length === 0) {
