@@ -7,7 +7,6 @@ import YouTubeSearchAPI from "youtube-search-api";
 import path from "path";
 import fs from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
-import { spawn } from "child_process";
 
 const MAX_DURATION = 55;
 const SEPARATOR_URL = "*";
@@ -128,37 +127,6 @@ export async function downloadVideosServer(
     }
 }
 
-function downloadAudioFromYouTube(url: string, res: NextApiResponse) {
-    // Configura el comando yt-dlp para extraer audio
-    const ytdlp = spawn("yt-dlp", [
-        "-f",
-        "bestaudio",
-        "--extract-audio",
-        "--audio-format",
-        "mp3",
-        url,
-    ]);
-
-    // Establecer encabezados para la respuesta
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", `attachment; filename="audio.mp3"`);
-
-    // Pipe de la salida estándar de yt-dlp al flujo de respuesta
-    ytdlp.stdout.pipe(res);
-
-    // Manejar errores
-    ytdlp.stderr.on("data", (data) => {
-        console.error(`stderr: ${data}`);
-        res.status(500).send("Error downloading audio.");
-    });
-
-    ytdlp.on("close", (code) => {
-        if (code !== 0) {
-            res.status(500).send("Failed to download audio.");
-        }
-    });
-}
-
 // Función para descargar en cliente.
 export default async function handler(
     req: NextApiRequest,
@@ -171,8 +139,6 @@ export default async function handler(
     }
 
     try {
-        downloadAudioFromYouTube(videoUrl, res);
-        /*
         const info = await ytdl.getInfo(videoUrl);
         const format = ytdl.chooseFormat(info.formats, {
             filter: "audioonly",
@@ -216,7 +182,6 @@ export default async function handler(
                 });
             })
             .pipe(res, { end: true }); // Pipe directamente al response del cliente
-        */
     } catch (error) {
         const info = await ytdl.getInfo(videoUrl);
         const videoTitle = `${info.videoDetails.title}`;
