@@ -185,7 +185,7 @@ export default async function handler(
     } catch (error) {
         const info = await ytdl.getInfo(videoUrl);
         const videoTitle = `${info.videoDetails.title}`;
-        console.error(`Error downloading video: ${videoTitle}`, error);
+        console.error(`Error downloading audio: ${videoTitle}`, error);
         res.status(500).json({ error: "Failed to download audio" });
     }
 }

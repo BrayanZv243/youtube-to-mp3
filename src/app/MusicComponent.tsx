@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import ReactLogo from "../../public/react-logo";
 import TextArea from "@/app/components/TextArea";
+import RadioButton from "./components/RadioButton";
 import PulseLoader from "react-spinners/PulseLoader";
 import { downloadVideosServer, searchVideos } from "@/pages/api/downloader";
 
@@ -13,6 +14,7 @@ function MusicComponent() {
     const [success, setSuccess] = useState<boolean>(false);
     const [error, setError] = useState<boolean>(false);
     const [status, setStatus] = useState<string>("Initializing");
+    const [selectedValue, setSelectedValue] = useState<string>("whatsapp");
 
     // Función para descargar el video
     async function downloadVideo(videosName: string[]) {
@@ -28,10 +30,13 @@ function MusicComponent() {
             //await downloadVideosServer(videos);
 
             // Download on client
-
+            let count = 1;
             for (const video of videos) {
-                setStatus(`Downloading ${video.name}...`);
+                setStatus(
+                    `Downloading ${video.name}... (${count}/${songs.length})`
+                );
                 await downloadVideosClient(video.url);
+                count++;
             }
         } catch (error) {
             console.error("Failed to download video:", error);
@@ -101,7 +106,21 @@ function MusicComponent() {
         }
     };
 
-    const formatPaste = (query: string): void => {
+    const pasteSelection = (query: string) => {
+        switch (selectedValue) {
+            case "whatsapp":
+                return formatPasteWhatsapp(query);
+
+            case "youtube":
+                return formatPasteYoutube(query);
+
+            default:
+                console.warn("No valid selection made.");
+                return null;
+        }
+    };
+
+    const formatPasteWhatsapp = (query: string): void => {
         // Ajustar el regex para capturar el texto después del marcador de tiempo y el nombre
         const regex = /\]\s+[^:]+:\s+([\s\S]*?)(?=\n\s*\[|$)/g;
 
@@ -124,8 +143,48 @@ function MusicComponent() {
         }
     };
 
+    const formatPasteYoutube = (query: string): void => {
+        const arrayStrQuery = query.split("\n");
+        const matches: string[] = [];
+        for (let i = 0; i < arrayStrQuery.length - 1; i++) {
+            const element = arrayStrQuery[i];
+            const hasNewLine = /^(?:\r?\n|\r)$/.test(element);
+            const hasFormatNumber = /\b\d+:\d+\b/.test(element);
+
+            if (
+                element.includes("Mixes are playlists Youtube makes for you") ||
+                element.includes("Mi Mix") ||
+                hasNewLine ||
+                hasFormatNumber
+            ) {
+                continue;
+            }
+            const title = arrayStrQuery[i];
+            const author = arrayStrQuery[i + 1];
+            const formattedText = `${title.trim()} - ${author.trim()}`;
+            matches.push(formattedText);
+            i += 4;
+        }
+
+        if (matches.length === 0) {
+            const newString = text + query;
+            setText(newString);
+            setSongs(newString.split("\n"));
+        } else {
+            // Unir todas las canciones en una sola línea
+            setText(matches.join("\n") + "\n" + text);
+            setSongs((songs) => [...songs, ...matches]);
+        }
+    };
+
+    const handleChangeRadioButton = (
+        event: React.ChangeEvent<HTMLInputElement>
+    ) => {
+        setSelectedValue(event.target.value);
+    };
+
     return (
-        <div className="max-w-screen-xl mx-auto p-8 text-center text-[#fff]">
+        <div className="mx-auto p-8 text-center text-[#fff] min-h-screen">
             <div className="flex w-full justify-center">
                 <ReactLogo className="h-32 w-32 p-6 transition-filter duration-300 hover:drop-shadow-[0_0_2em_#646cffaa] dark:hover:drop-shadow-[0_0_2em_#61dafbaa]" />
             </div>
@@ -148,6 +207,7 @@ function MusicComponent() {
                 >
                     {loading ? "Downloading..." : "Get Music!"}
                 </button>
+
                 <div className="mt-2">
                     <p className={success && !loading ? "text-gray-500" : ""}>
                         {success &&
@@ -162,12 +222,19 @@ function MusicComponent() {
                     <div className="mt-4">{loading && <PulseLoader />}</div>
                 </div>
             </div>
-            <TextArea
-                text={text}
-                disabled={loading}
-                onTextChange={handleTextChange}
-                onPaste={formatPaste}
-            />
+            <div className="flex flex-auto gap-6 justify-center ">
+                <TextArea
+                    text={text}
+                    disabled={loading}
+                    onTextChange={handleTextChange}
+                    onPaste={pasteSelection}
+                />
+                <RadioButton
+                    selectedValue={selectedValue}
+                    onChange={handleChangeRadioButton}
+                    disabled={loading}
+                />
+            </div>
         </div>
     );
 }
