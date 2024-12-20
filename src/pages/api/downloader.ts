@@ -8,7 +8,8 @@ import path from "path";
 import fs from "fs";
 import type { NextApiRequest, NextApiResponse } from "next";
 
-const MAX_DURATION = 55;
+const MAX_DURATION = 10;
+const MAX_VIDEOS_FOUND_BY_ARTIST = 25;
 const SEPARATOR_URL = "*";
 
 // Función para convertir la duración en formato 'hh:mm:ss' o 'mm:ss' a minutos
@@ -39,7 +40,9 @@ function convertDurationToMinutes(duration: string): number {
 }
 
 // Función para buscar videos en YouTube por nombre
-export async function searchVideos(videosName: string[]): Promise<string[]> {
+export async function searchVideosBySong(
+    videosName: string[]
+): Promise<string[]> {
     try {
         const urls: string[] = [];
 
@@ -68,6 +71,51 @@ export async function searchVideos(videosName: string[]): Promise<string[]> {
             if (!found) {
                 console.warn(`No suitable video found for: ${videoName}`);
             }
+        }
+
+        return urls;
+    } catch (error) {
+        console.error("Error searching for videos:", error);
+        throw error;
+    }
+}
+
+export async function searchVideosByArtist(
+    artistName: string
+): Promise<string[]> {
+    try {
+        const urls: string[] = [];
+        const response = await YouTubeSearchAPI.GetListByKeyword(artistName);
+        let count = 0;
+
+        if (response) {
+            // Iteramos sobre los elementos de la respuesta
+            for (const video of response.items) {
+                // Verificamos si el video tiene una duración válida
+                if (video.length && video.length.simpleText) {
+                    const durationInMinutes = convertDurationToMinutes(
+                        video.length.simpleText
+                    );
+
+                    // Verificamos que la duración del video sea válida
+                    if (durationInMinutes <= MAX_DURATION) {
+                        urls.push(
+                            `https://www.youtube.com/watch?v=${video.id}${SEPARATOR_URL}${video.title}`
+                        );
+                        count++;
+
+                        // Si ya hemos encontrado 15 canciones, salimos del bucle
+                        if (count >= MAX_VIDEOS_FOUND_BY_ARTIST) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Si no se encontraron suficientes videos, mostramos un aviso
+        if (urls.length === 0) {
+            console.warn(`No suitable videos found for artist: ${artistName}`);
         }
 
         return urls;

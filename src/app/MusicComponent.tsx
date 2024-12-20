@@ -5,7 +5,11 @@ import ReactLogo from "../../public/react-logo";
 import TextArea from "@/app/components/TextArea";
 import RadioButton from "./components/RadioButton";
 import PulseLoader from "react-spinners/PulseLoader";
-import { downloadVideosServer, searchVideos } from "@/pages/api/downloader";
+import {
+    downloadVideosServer,
+    searchVideosBySong,
+    searchVideosByArtist,
+} from "@/pages/api/downloader";
 
 function MusicComponent() {
     const [text, setText] = useState<string>("");
@@ -14,26 +18,69 @@ function MusicComponent() {
     const [success, setSuccess] = useState<boolean>(false);
     const [error, setError] = useState<boolean>(false);
     const [status, setStatus] = useState<string>("Initializing");
-    const [selectedValue, setSelectedValue] = useState<string>("whatsapp");
+    const [selectedValueOptionsPaste, setSelectedValueOptionsPaste] =
+        useState<string>("whatsapp");
+    const [selectedValueOptionsSearch, setSelectedValueOptionsSearch] =
+        useState<string>("single-song");
 
-    // Función para descargar el video
-    async function downloadVideo(videosName: string[]) {
+    const optionsPaste = [
+        { value: "whatsapp", label: "WhatsApp" },
+        { value: "youtube-mix", label: "YouTube Mix" },
+        { value: "youtube-nightcore", label: "YouTube Nightcore" },
+        { value: "by-artist", label: "By Artist" },
+        { value: "none", label: "Ninguno" },
+    ];
+
+    const optionsSearch = [
+        { value: "single-song", label: "By Single Song" },
+        { value: "artist", label: "By Artist" },
+    ];
+
+    // Función para descargar el video por lista de canciones
+    async function downloadVideoBySong(videosName: string[]) {
         try {
             setStatus("Searching videos...");
-            const urls = await searchVideos(videosName);
+            const urls = await searchVideosBySong(videosName);
             const videos = urls.map((url, index) => ({
                 url: url.split("*")[0],
                 name: url.split("*")[1] || `video_${index + 1}`,
             }));
 
             // Download on server
-            //await downloadVideosServer(videos);
+            // await downloadVideosServer(videos);
 
             // Download on client
             let count = 1;
             for (const video of videos) {
                 setStatus(
                     `Downloading ${video.name}... (${count}/${songs.length})`
+                );
+                await downloadVideosClient(video.url);
+                count++;
+            }
+        } catch (error) {
+            console.error("Failed to download video:", error);
+        }
+    }
+
+    // Función para descargar el video por artista
+    async function downloadVideoByArtist(artist: string) {
+        try {
+            setStatus("Searching videos...");
+            const urls = await searchVideosByArtist(artist);
+            const videos = urls.map((url, index) => ({
+                url: url.split("*")[0],
+                name: url.split("*")[1] || `video_${index + 1}`,
+            }));
+
+            // Download on server
+            // await downloadVideosServer(videos);
+
+            // Download on client
+            let count = 1;
+            for (const video of videos) {
+                setStatus(
+                    `Downloading ${video.name}... (${count}/${urls.length})`
                 );
                 await downloadVideosClient(video.url);
                 count++;
@@ -94,25 +141,38 @@ function MusicComponent() {
     const handleGetMusic = async () => {
         setLoading(true);
         try {
-            await downloadVideo(songs);
-            setSuccess(true);
-            setError(false);
+            switch (selectedValueOptionsSearch) {
+                case "single-song":
+                    await downloadVideoBySong(songs);
+                    break;
+                case "artist":
+                    await downloadVideoByArtist(songs[0]);
+                    break;
+            }
         } catch (error) {
             console.error("Failed to download video:", error);
             setError(true);
             setSuccess(false);
         } finally {
+            setSuccess(true);
+            setError(false);
             setLoading(false);
         }
     };
 
     const pasteSelection = (query: string) => {
-        switch (selectedValue) {
+        switch (selectedValueOptionsPaste) {
             case "whatsapp":
                 return formatPasteWhatsapp(query);
 
-            case "youtube":
+            case "youtube-mix":
                 return formatPasteYoutube(query);
+
+            case "youtube-nightcore":
+                return formatPasteYoutubeNightcore(query);
+
+            case "none":
+                return formatPasteNone(query);
 
             default:
                 console.warn("No valid selection made.");
@@ -177,10 +237,44 @@ function MusicComponent() {
         }
     };
 
-    const handleChangeRadioButton = (
+    const formatPasteYoutubeNightcore = (query: string): void => {
+        // Expresión regular para capturar y eliminar el tiempo al inicio de cada línea
+        const regex = /^(?:\d{2}:\d{2}|\d:\d{2}:\d{2})\s+/gm;
+
+        // Limpiar el query eliminando los tiempos y dividiéndolo en líneas
+        const matches = query
+            .replace(regex, "") // Elimina los tiempos
+            .split("\n") // Divide el texto en líneas
+            .map((line) => line.trim()) // Elimina espacios en cada línea
+            .filter((line) => line !== ""); // Filtra líneas vacías
+
+        // Actualizar el estado según si hay coincidencias
+        if (matches.length === 0) {
+            const newString = text + query;
+            setText(newString);
+            setSongs(newString.split("\n"));
+        } else {
+            setText(matches.join("\n") + "\n" + text);
+            setSongs((songs) => [...songs, ...matches]);
+        }
+    };
+
+    const formatPasteNone = (query: string): void => {
+        const newString = text + query;
+        setText(newString);
+        setSongs(newString.split("\n"));
+    };
+
+    const handleChangeRadioButtonOptionsPaste = (
         event: React.ChangeEvent<HTMLInputElement>
     ) => {
-        setSelectedValue(event.target.value);
+        setSelectedValueOptionsPaste(event.target.value);
+    };
+
+    const handleChangeRadioButtonOptionsSearch = (
+        event: React.ChangeEvent<HTMLInputElement>
+    ) => {
+        setSelectedValueOptionsSearch(event.target.value);
     };
 
     return (
@@ -222,16 +316,28 @@ function MusicComponent() {
                     <div className="mt-4">{loading && <PulseLoader />}</div>
                 </div>
             </div>
-            <div className="flex flex-auto gap-6 justify-center ">
+            <RadioButton
+                title="Seleccione el tipo de busqueda"
+                options={optionsSearch}
+                selectedValue={selectedValueOptionsSearch}
+                onChange={handleChangeRadioButtonOptionsSearch}
+                disabled={loading}
+            />
+
+            <div className="mt-6 flex flex-auto gap-6 justify-center">
                 <TextArea
                     text={text}
                     disabled={loading}
                     onTextChange={handleTextChange}
                     onPaste={pasteSelection}
                 />
+
                 <RadioButton
-                    selectedValue={selectedValue}
-                    onChange={handleChangeRadioButton}
+                    className="-mt-2"
+                    title="Seleccione el tipo de pegado"
+                    options={optionsPaste}
+                    selectedValue={selectedValueOptionsPaste}
+                    onChange={handleChangeRadioButtonOptionsPaste}
                     disabled={loading}
                 />
             </div>
